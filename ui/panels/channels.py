@@ -1,93 +1,101 @@
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QLineEdit,QPushButton, QLabel, QMessageBox
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
+    QPushButton, QLabel
+)
+from PySide6.QtCore import Qt
 from qasync import asyncSlot
 
-from core.telegram.user_client import client
+from core.telegram.user_client import client, connect_client, is_listener_running, restart_listener
 from core.config_bd import load_bd, save_bd
-from middleware.telegram_middleware import save_valid_channels
 
 
 class ChannelsPanel(QWidget):
-    """Panel para añadir/quitar los canales de Telegram que el bot debe vigilar."""
+    """Panel para seleccionar qué canales de Telegram debe vigilar el bot."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._build_ui()
-        self._load_existing_channels()
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
 
-        layout.addWidget(QLabel("Canales vigilados"))
+        layout.addWidget(QLabel("Canales disponibles"))
         self.channel_list = QListWidget()
         layout.addWidget(self.channel_list)
 
-        input_row = QHBoxLayout()
-        self.channel_input = QLineEdit()
-        self.channel_input.setPlaceholderText("ID o @usuario del canal")
-        self.add_button = QPushButton("Añadir")
-        self.remove_button = QPushButton("Quitar seleccionado")
+        buttons_row = QHBoxLayout()
+        self.refresh_button = QPushButton("Actualizar lista")
+        self.save_button = QPushButton("Guardar selección")
 
-        self.add_button.clicked.connect(self.on_add_clicked)
-        self.remove_button.clicked.connect(self.on_remove_clicked)
+        self.refresh_button.clicked.connect(self.on_refresh_clicked)
+        self.save_button.clicked.connect(self.on_save_clicked)
 
-        input_row.addWidget(self.channel_input)
-        input_row.addWidget(self.add_button)
-
-        layout.addLayout(input_row)
-        layout.addWidget(self.remove_button)
+        buttons_row.addWidget(self.refresh_button)
+        buttons_row.addWidget(self.save_button)
+        layout.addLayout(buttons_row)
 
         self.status_label = QLabel("")
         layout.addWidget(self.status_label)
 
-    def _load_existing_channels(self):
-        """Rellena la lista con lo que ya haya guardado en data/config.json."""
-        config = load_bd()
-        for canal in config.get("channels", []):
-            self.channel_list.addItem(canal)
+    def showEvent(self, event):
+        super().showEvent(event)
+        if self.channel_list.count() == 0:
+            self.on_refresh_clicked()
 
     @asyncSlot()
-    async def on_add_clicked(self):
-        text = self.channel_input.text().strip()
-        if not text:
+    async def on_refresh_clicked(self):
+        self.refresh_button.setEnabled(False)
+        self.status_label.setText("Cargando canales...")
+
+        try:
+            await connect_client()
+            dialogs = await client.get_dialogs()
+        except Exception as e:
+            self.status_label.setText(f"⚠️ Error al cargar canales: {e}")
+            self.refresh_button.setEnabled(True)
             return
 
-        self.add_button.setEnabled(False)
-        self.status_label.setText(f"Comprobando {text}...")
-
-        canales_a_probar = self.get_channels() + [text]
-        resultado = await save_valid_channels(client, canales_a_probar)
+        canales_guardados = set(load_bd().get("channels", []))
 
         self.channel_list.clear()
-        for canal in resultado["validos"]:
-            self.channel_list.addItem(canal)
+        for dialog in dialogs:
+            if not (dialog.is_channel or dialog.is_group):
+                continue
 
-        if text in resultado["invalidos"]:
-            self.status_label.setText(f"⚠️ No se pudo acceder a '{text}'")
-            QMessageBox.warning(
-                self,
-                "Canal no válido",
-                f"No se pudo acceder al canal '{text}'.\n"
-                "Comprueba que el ID/usuario es correcto y que la cuenta ya es miembro.",
+            item = QListWidgetItem(f"{dialog.name} ({dialog.id})")
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            item.setData(Qt.UserRole, dialog.id)
+            item.setCheckState(
+                Qt.Checked if dialog.id in canales_guardados else Qt.Unchecked
             )
-        else:
-            self.status_label.setText(f"Canal '{text}' añadido correctamente.")
-            self.channel_input.clear()
+            self.channel_list.addItem(item)
 
-        self.add_button.setEnabled(True)
+        self.status_label.setText(f"{self.channel_list.count()} canales encontrados.")
+        self.refresh_button.setEnabled(True)
 
-    def on_remove_clicked(self):
-        row = self.channel_list.currentRow()
-        if row < 0:
-            return
-        canal = self.channel_list.item(row).text()
-        self.channel_list.takeItem(row)
+    @asyncSlot()
+    async def on_save_clicked(self):
+        seleccionados = [
+            self.channel_list.item(i).data(Qt.UserRole)
+            for i in range(self.channel_list.count())
+            if self.channel_list.item(i).checkState() == Qt.Checked
+        ]
 
         config = load_bd()
-        canales = config.get("channels", [])
-        if canal in canales:
-            canales.remove(canal)
-        config["channels"] = canales
+        config["channels"] = seleccionados
         save_bd(config)
 
-    def get_channels(self):
-        return [self.channel_list.item(i).text() for i in range(self.channel_list.count())]
+        self.status_label.setText(f"Guardados {len(seleccionados)} canales.")
+
+        if seleccionados and is_listener_running():
+            self.status_label.setText(
+                f"Guardados {len(seleccionados)} canales. Reiniciando vigilancia..."
+            )
+            self.save_button.setEnabled(False)
+            try:
+                await restart_listener()
+                self.status_label.setText(f"Vigilando {len(seleccionados)} canales.")
+            except Exception as e:
+                self.status_label.setText(f"⚠️ Error al reiniciar: {e}")
+            finally:
+                self.save_button.setEnabled(True)
