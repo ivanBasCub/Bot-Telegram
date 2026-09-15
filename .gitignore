@@ -3,3 +3,4 @@
 __init__.py
 user_session.session
 **/__pycache__/
+*.session
