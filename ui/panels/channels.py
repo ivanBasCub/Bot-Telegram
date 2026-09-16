@@ -1,16 +1,11 @@
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
-    QPushButton, QLabel
-)
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem, QPushButton, QLabel
 from PySide6.QtCore import Qt
 from qasync import asyncSlot
 
 from core.telegram.user_client import client, connect_client, is_listener_running, restart_listener
 from core.config_bd import load_bd, save_bd
 
-
 class ChannelsPanel(QWidget):
-    """Panel para seleccionar qué canales de Telegram debe vigilar el bot."""
 
     def __init__(self, parent=None):
         super().__init__(parent)

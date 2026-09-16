@@ -1,11 +1,12 @@
-import asyncio
-from _asyncio import Task
-from typing import Any
-
 from core.constants.env import TG_API_ID, TG_API_HASH, TG_SESSION_NAME, TG_PHONE
 from core.constants.paths import BD_FILE_PATH
+
 from ui.dialogs.login import ask_code, ask_password
+
 from telethon import TelegramClient, events
+from _asyncio import Task
+from typing import Any
+import asyncio
 import json
 import os
 

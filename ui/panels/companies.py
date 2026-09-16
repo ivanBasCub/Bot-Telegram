@@ -1,10 +1,9 @@
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QLineEdit, QPushButton, QLabel
-)
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem, QLineEdit, QPushButton, QLabel
+
+from core.config_bd import load_bd, save_bd
 
 
 class CompaniesPanel(QWidget):
-    """Panel para añadir/quitar las empresas que le interesan al cliente."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -31,19 +30,42 @@ class CompaniesPanel(QWidget):
 
         layout.addLayout(input_row)
         layout.addWidget(self.remove_button)
+        self._load_companies(set(load_bd().get("companies", [])))
+
 
     def on_add_clicked(self):
-        # TODO: guardar en data/config.json para que el matching de ofertas lo use
         text = self.company_input.text().strip()
-        if text:
-            self.company_list.addItem(text)
-            self.company_input.clear()
+        self.company_input.clear()
+
+        if not text:
+            return
+
+        companies_saved = set(load_bd().get("companies", []))
+        companies_saved.add(text)
+
+        bd = load_bd()
+        bd["companies"] = list(companies_saved)
+        save_bd(bd)
+
+        self.company_list.clear()
+        self._load_companies(companies_saved)
+
 
     def on_remove_clicked(self):
-        # TODO: eliminar también de data/config.json al confirmar
         row = self.company_list.currentRow()
-        if row >= 0:
+        company = self.company_list.currentItem().text()
+        if company:
+            bd = load_bd()
+
+            companies_saved = bd.get("companies", [])
+            companies_saved.remove(company)
+
+            bd["companies"] = companies_saved
+            save_bd(bd)
             self.company_list.takeItem(row)
 
-    def get_companies(self):
-        return [self.company_list.item(i).text() for i in range(self.company_list.count())]
+
+    def _load_companies(self, companies: set):
+        for company in companies:
+            item = QListWidgetItem(company)
+            self.company_list.addItem(item)
