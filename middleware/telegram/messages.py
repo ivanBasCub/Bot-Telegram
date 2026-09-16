@@ -3,6 +3,7 @@ import re
 import random
 from core.config_bd import load_bd
 from core.email.senders import send_email
+from core.telegram.chat_bot import notify_client
 
 
 def _extract_msg_data(message):
@@ -28,7 +29,6 @@ def _extract_msg_data(message):
 async def check_msg_job_application(message):
 
     data = _extract_msg_data(message)
-    print(data)
     bd = load_bd()
 
     if data is None or data["company"] not in bd["companies"]:
@@ -52,3 +52,12 @@ async def check_msg_job_application(message):
     """
 
     send_email(email, subject, body)
+
+    message = f"""
+    Buenas putita que me tiene trabajando como negro. 
+    Se ha enviado un correo a la referencia {data["reference"]}
+    Espero q no te cogan y liberame de este sufrimiento AAAAAAAAAA.
+    Q tengas un buen dia :)
+    """
+
+    await notify_client(message)
